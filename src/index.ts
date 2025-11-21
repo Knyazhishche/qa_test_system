@@ -1,4 +1,3 @@
-import { InMemoryStore } from "./storage/inMemoryStore";
 import { IngestionService } from "./services/ingestionService";
 import { OpenRouterClient } from "./llm/openRouterClient";
 import { TestCaseGenerator } from "./services/testCaseGenerator";
@@ -7,19 +6,45 @@ import { ActionMapper } from "./services/actionMapper";
 import { ConsolePageDriver, RunnerService } from "./services/runner";
 import { embedText } from "./services/embedding";
 import { NotionClient } from "./services/notionClient";
+import { createStore } from "./storage/storeFactory";
+
+const FALLBACK_DOC_MD = `
+# Sample QA Regression Scope
+
+## Authentication
+- User can log in with valid credentials.
+- Invalid password shows an error message.
+- "Forgot password" link opens reset flow.
+
+## Dashboard
+- Shows widgets after login.
+- Navigation sidebar links work.
+
+## Settings
+- User can update profile info.
+- Password change validates complexity.
+`;
 
 async function runDemo() {
-  const store = new InMemoryStore();
+  const store = await createStore();
   const ingestion = new IngestionService(store);
 
-  console.log("Ingesting documentation from docs.md ...");
-  const { chunks } = await ingestion.ingestMarkdownFile("docs.md", "Local Markdown", "docs.md");
+  const notionPageId = process.env.NOTION_PAGE_ID;
+  let chunks;
+  if (notionPageId) {
+    const notion = new NotionClient();
+    console.log(`Ingesting Notion page ${notionPageId} ...`);
+    ({ chunks } = await ingestion.ingestNotionPage(notion, notionPageId));
+  } else {
+    console.log("Ingesting embedded sample documentation (no local file required)...");
+    ({ chunks } = await ingestion.ingestMarkdownString("Embedded Sample", FALLBACK_DOC_MD, "embedded://sample"));
+  }
 
   const llm = new OpenRouterClient();
   const generator = new TestCaseGenerator(llm, store);
 
   const queryEmbedding = embedText("regression test system");
-  const selectedChunks = store.findSimilarChunks(queryEmbedding, 2);
+  const selectedChunks = await store.findSimilarChunks(queryEmbedding, 2);
   const featureKey = "qa/regression-system";
   console.log(`Generating test cases for "${featureKey}" using Grok...`);
 
@@ -27,29 +52,29 @@ async function runDemo() {
     await generator.generateFromChunk(chunk, featureKey);
   }
 
-  const cases = store.listTestCases();
+  const cases = await store.listTestCases();
   console.log(`Generated ${cases.length} test cases.`);
   cases.forEach((tc) => {
-    console.log(`- ${tc.id ?? ""} ${tc.featureKey}: ${tc.title} [${tc.priority}] (${tc.tags.join(", ")})`);
+    console.log(`- ${tc.featureKey}: ${tc.title} [${tc.priority}] (${tc.tags.join(", ")})`);
   });
 }
 
 async function runSimulated() {
-  const store = new InMemoryStore();
+  const store = await createStore();
   const ingestion = new IngestionService(store);
-  const { chunks } = await ingestion.ingestMarkdownFile("docs.md", "Local Markdown", "docs.md");
+  const { chunks } = await ingestion.ingestMarkdownString("Embedded Sample", FALLBACK_DOC_MD, "embedded://sample");
 
   const llm = new OpenRouterClient();
   const generator = new TestCaseGenerator(llm, store);
   const queryEmbedding = embedText("authentication login");
-  const selectedChunks = store.findSimilarChunks(queryEmbedding, 1);
+  const selectedChunks = await store.findSimilarChunks(queryEmbedding, 1);
   const featureKey = "demo/auth";
   for (const chunk of selectedChunks) {
     await generator.generateFromChunk(chunk, featureKey);
   }
 
   const uiMapBuilder = new UiMapBuilder(store);
-  const loginMap = uiMapBuilder.createPageMap("/login", [
+  const loginMap = await uiMapBuilder.createPageMap("/login", [
     {
       type: "input",
       label: "Email",
@@ -74,7 +99,7 @@ async function runSimulated() {
 
   const actionMapper = new ActionMapper(llm, store);
   const runner = new RunnerService(store, actionMapper);
-  const testCaseIds = store.listTestCases().map((tc) => tc.id);
+  const testCaseIds = (await store.listTestCases()).map((tc) => tc.id);
   const driver = new ConsolePageDriver();
 
   console.log("Running simulated suite against demo UI map...");
@@ -92,7 +117,7 @@ async function runSimulated() {
 }
 
 async function runNotionIngestion(pageId: string, featureKey = "notion/feature"): Promise<void> {
-  const store = new InMemoryStore();
+  const store = await createStore();
   const ingestion = new IngestionService(store);
   const notion = new NotionClient();
   console.log(`Ingesting Notion page ${pageId} ...`);
@@ -104,7 +129,7 @@ async function runNotionIngestion(pageId: string, featureKey = "notion/feature")
   for (const chunk of chunks) {
     await generator.generateFromChunk(chunk, featureKey);
   }
-  const cases = store.listTestCases();
+  const cases = await store.listTestCases();
   console.log(`Generated ${cases.length} test cases for feature "${featureKey}".`);
   cases.forEach((tc) => console.log(`- ${tc.title} [${tc.priority}]`));
 }

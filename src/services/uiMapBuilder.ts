@@ -1,4 +1,4 @@
-import { InMemoryStore } from "../storage/inMemoryStore";
+import { StoreAdapter } from "../storage/storeAdapter";
 import { UiElement, UiPage } from "../types";
 
 export type UiElementInput = Omit<UiElement, "id" | "pageId">;
@@ -9,11 +9,11 @@ export interface UiMapResult {
 }
 
 export class UiMapBuilder {
-  constructor(private readonly store: InMemoryStore) {}
+  constructor(private readonly store: StoreAdapter) {}
 
-  createPageMap(url: string, elements: UiElementInput[]): UiMapResult {
-    const page = this.store.upsertUiPage({ url });
-    const created = this.store.addUiElements(page.id, elements);
+  async createPageMap(url: string, elements: UiElementInput[]): Promise<UiMapResult> {
+    const page = await this.store.upsertUiPage({ url });
+    const created = await this.store.addUiElements(page.id, elements);
     return { page, elements: created };
   }
 }

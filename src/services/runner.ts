@@ -1,4 +1,4 @@
-import { InMemoryStore } from "../storage/inMemoryStore";
+import { StoreAdapter } from "../storage/storeAdapter";
 import { ActionMapper } from "./actionMapper";
 import { TestCaseRunStatus, TestRun, TestStep, UiElement } from "../types";
 
@@ -62,23 +62,23 @@ export interface RunOptions {
 }
 
 export class RunnerService {
-  constructor(private readonly store: InMemoryStore, private readonly mapper?: ActionMapper) {}
+  constructor(private readonly store: StoreAdapter, private readonly mapper?: ActionMapper) {}
 
   async runSuite(options: RunOptions): Promise<TestRun> {
-    const run = this.store.createTestRun({
+    const run = await this.store.createTestRun({
       suiteName: options.suiteName,
       gitCommit: undefined,
       startedAt: new Date().toISOString(),
       finishedAt: undefined,
     });
-    this.store.updateTestRun(run.id, { status: "running", startedAt: new Date().toISOString() });
+    await this.store.updateTestRun(run.id, { status: "running", startedAt: new Date().toISOString() });
 
     const results = [];
     for (const testCaseId of options.testCaseIds) {
       const result = await this.runTestCase(testCaseId, options);
       results.push(result);
     }
-    this.store.setTestCaseRuns(
+    await this.store.setTestCaseRuns(
       run.id,
       results.map((r) => ({
         testCaseId: r.testCaseId,
@@ -102,8 +102,9 @@ export class RunnerService {
   }
 
   private async runTestCase(testCaseId: string, options: RunOptions): Promise<{ testCaseId: string; status: TestCaseRunStatus; errorMessage?: string }> {
-    const steps = this.store.getTestSteps(testCaseId);
-    const testCase = this.store.listTestCases().find((tc) => tc.id === testCaseId);
+    const steps = await this.store.getTestSteps(testCaseId);
+    const testCaseList = await this.store.listTestCases();
+    const testCase = testCaseList.find((tc) => tc.id === testCaseId);
     if (!testCase) {
       return { testCaseId, status: "failed", errorMessage: "Test case not found." };
     }

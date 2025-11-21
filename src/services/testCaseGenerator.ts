@@ -2,7 +2,7 @@ import { z } from "zod";
 import { buildTestCasePrompt } from "../prompts/testCasePrompt";
 import { OpenRouterClient } from "../llm/openRouterClient";
 import { DocumentChunk, GeneratedTestCasePayload, TestCase, TestStep } from "../types";
-import { InMemoryStore } from "../storage/inMemoryStore";
+import { StoreAdapter } from "../storage/storeAdapter";
 
 const TestCaseArraySchema = z
   .array(
@@ -25,13 +25,17 @@ function cleanJson(content: string): string {
 }
 
 export class TestCaseGenerator {
-  constructor(private readonly llm: OpenRouterClient, private readonly store: InMemoryStore) {}
+  constructor(private readonly llm: OpenRouterClient, private readonly store: StoreAdapter) {}
 
   async generateFromChunk(chunk: DocumentChunk, featureKey: string): Promise<TestCase[]> {
     const prompt = buildTestCasePrompt(chunk, featureKey);
     const raw = await this.llm.chat(prompt, { reasoning: false });
     const parsed = this.parse(raw);
-    return parsed.map((payload) => this.persist(payload, chunk));
+    const results: TestCase[] = [];
+    for (const payload of parsed) {
+      results.push(await this.persist(payload, chunk));
+    }
+    return results;
   }
 
   private parse(raw: string): GeneratedTestCasePayload[] {
@@ -45,7 +49,7 @@ export class TestCaseGenerator {
     return TestCaseArraySchema.parse(json);
   }
 
-  private persist(payload: GeneratedTestCasePayload, chunk: DocumentChunk): TestCase {
+  private async persist(payload: GeneratedTestCasePayload, chunk: DocumentChunk): Promise<TestCase> {
     const tagsWithPreconditions =
       payload.preconditions.length > 0
         ? Array.from(new Set([...payload.tags, ...payload.preconditions.map((p) => `pre:${p}`)]))
@@ -59,7 +63,7 @@ export class TestCaseGenerator {
       status: "active",
       tags: tagsWithPreconditions,
     };
-    const testCase = this.store.upsertTestCase(base);
+    const testCase = await this.store.upsertTestCase(base);
     const steps: Array<Omit<TestStep, "id" | "testCaseId" | "index">> = payload.steps.map((stepText) => ({
       rawText: stepText,
       pagePath: undefined,
@@ -67,7 +71,7 @@ export class TestCaseGenerator {
       value: undefined,
       uiElementId: undefined,
     }));
-    this.store.replaceTestSteps(testCase.id, steps);
+    await this.store.replaceTestSteps(testCase.id, steps);
     return testCase;
   }
 }

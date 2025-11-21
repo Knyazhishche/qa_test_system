@@ -1,5 +1,5 @@
 import { readFile } from "fs/promises";
-import { InMemoryStore } from "../storage/inMemoryStore";
+import { StoreAdapter } from "../storage/storeAdapter";
 import { embedText } from "./embedding";
 import { chunkMarkdown } from "./chunker";
 import { DocumentChunk, DocumentSource } from "../types";
@@ -11,16 +11,22 @@ export interface IngestionResult {
 }
 
 export class IngestionService {
-  constructor(private readonly store: InMemoryStore) {}
+  constructor(private readonly store: StoreAdapter) {}
 
   async ingestMarkdownFile(path: string, name: string, url?: string): Promise<IngestionResult> {
     const markdown = await readFile(path, "utf8");
-    const source = this.store.createDocumentSource({ type: "markdown", name, url });
-    const chunks = this.ingestMarkdownContent(markdown, source);
+    const source = await this.store.createDocumentSource({ type: "markdown", name, url });
+    const chunks = await this.ingestMarkdownContent(markdown, source);
     return { source, chunks };
   }
 
-  ingestMarkdownContent(markdown: string, source: DocumentSource): DocumentChunk[] {
+  async ingestMarkdownString(name: string, markdown: string, url?: string): Promise<IngestionResult> {
+    const source = await this.store.createDocumentSource({ type: "markdown", name, url });
+    const chunks = await this.ingestMarkdownContent(markdown, source);
+    return { source, chunks };
+  }
+
+  async ingestMarkdownContent(markdown: string, source: DocumentSource): Promise<DocumentChunk[]> {
     const sections = chunkMarkdown(markdown);
     const chunks = sections.map((section) => ({
       title: section.title,
@@ -36,8 +42,8 @@ export class IngestionService {
     const markdown = await notion.getPageMarkdown(pageId);
     const cleanTitle = title.trim() || "Notion Page";
     const url = `https://www.notion.so/${pageId.replace(/-/g, "")}`;
-    const source = this.store.createDocumentSource({ type: "notion", name: cleanTitle, url });
-    const chunks = this.ingestMarkdownContent(markdown, source);
+    const source = await this.store.createDocumentSource({ type: "notion", name: cleanTitle, url });
+    const chunks = await this.ingestMarkdownContent(markdown, source);
     return { source, chunks };
   }
 }

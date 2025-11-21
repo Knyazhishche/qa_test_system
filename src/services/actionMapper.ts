@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { buildActionMappingPrompt } from "../prompts/actionMappingPrompt";
 import { OpenRouterClient } from "../llm/openRouterClient";
-import { InMemoryStore } from "../storage/inMemoryStore";
 import { TestStep, UiElement, UiPage } from "../types";
+import { StoreAdapter } from "../storage/storeAdapter";
 
 const MappingSchema = z.object({
   action: z.enum([
@@ -28,7 +28,7 @@ function cleanJson(content: string): string {
 }
 
 export class ActionMapper {
-  constructor(private readonly llm: OpenRouterClient, private readonly store: InMemoryStore) {}
+  constructor(private readonly llm: OpenRouterClient, private readonly store: StoreAdapter) {}
 
   async mapStep(step: TestStep, page: UiPage, elements: UiElement[]): Promise<TestStep> {
     const truncatedElements = elements.slice(0, 24);
@@ -43,7 +43,7 @@ export class ActionMapper {
       parsed = { action: "unmapped", ui_element_id: null };
     }
 
-    const updated = this.store.updateTestStep(step.testCaseId, step.id, {
+    const updated = await this.store.updateTestStep(step.testCaseId, step.id, {
       action: parsed.action,
       uiElementId: parsed.ui_element_id ?? undefined,
       value: parsed.value,

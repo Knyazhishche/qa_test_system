@@ -16,15 +16,17 @@ This repository contains a TypeScript prototype that ingests documentation, gene
    ```bash
    npm install
    ```
-3. Run the demo to ingest `docs.md` and generate test cases with Grok:
+3. Configure Postgres with `pgvector` and set `POSTGRES_URL` in `.env`.
+4. (Optional) Set `NOTION_API_KEY` and `NOTION_PAGE_ID` to pull docs from Notion; otherwise an embedded sample is used.
+5. Run the demo to ingest docs and generate test cases with Grok:
    ```bash
    npm run demo
    ```
-4. Run the simulated pipeline (LLM mapping + console runner with stub UI map):
+6. Run the simulated pipeline (LLM mapping + console runner with stub UI map):
    ```bash
    npm run run-simulated
    ```
-5. Ingest a Notion page and generate tests (requires `NOTION_API_KEY`):
+7. Ingest a specific Notion page and generate tests (requires `NOTION_API_KEY`):
    ```bash
    npm run notion-ingest -- <notion_page_id> [featureKey]
    ```
