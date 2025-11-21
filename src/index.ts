@@ -1,0 +1,107 @@
+import { InMemoryStore } from "./storage/inMemoryStore";
+import { IngestionService } from "./services/ingestionService";
+import { OpenRouterClient } from "./llm/openRouterClient";
+import { TestCaseGenerator } from "./services/testCaseGenerator";
+import { UiMapBuilder } from "./services/uiMapBuilder";
+import { ActionMapper } from "./services/actionMapper";
+import { ConsolePageDriver, RunnerService } from "./services/runner";
+import { embedText } from "./services/embedding";
+
+async function runDemo() {
+  const store = new InMemoryStore();
+  const ingestion = new IngestionService(store);
+
+  console.log("Ingesting documentation from docs.md ...");
+  const { chunks } = await ingestion.ingestMarkdownFile("docs.md", "Local Markdown", "docs.md");
+
+  const llm = new OpenRouterClient();
+  const generator = new TestCaseGenerator(llm, store);
+
+  const queryEmbedding = embedText("regression test system");
+  const selectedChunks = store.findSimilarChunks(queryEmbedding, 2);
+  const featureKey = "qa/regression-system";
+  console.log(`Generating test cases for "${featureKey}" using Grok...`);
+
+  for (const chunk of selectedChunks) {
+    await generator.generateFromChunk(chunk, featureKey);
+  }
+
+  const cases = store.listTestCases();
+  console.log(`Generated ${cases.length} test cases.`);
+  cases.forEach((tc) => {
+    console.log(`- ${tc.id ?? ""} ${tc.featureKey}: ${tc.title} [${tc.priority}] (${tc.tags.join(", ")})`);
+  });
+}
+
+async function runSimulated() {
+  const store = new InMemoryStore();
+  const ingestion = new IngestionService(store);
+  const { chunks } = await ingestion.ingestMarkdownFile("docs.md", "Local Markdown", "docs.md");
+
+  const llm = new OpenRouterClient();
+  const generator = new TestCaseGenerator(llm, store);
+  const queryEmbedding = embedText("authentication login");
+  const selectedChunks = store.findSimilarChunks(queryEmbedding, 1);
+  const featureKey = "demo/auth";
+  for (const chunk of selectedChunks) {
+    await generator.generateFromChunk(chunk, featureKey);
+  }
+
+  const uiMapBuilder = new UiMapBuilder(store);
+  const loginMap = uiMapBuilder.createPageMap("/login", [
+    {
+      type: "input",
+      label: "Email",
+      locators: { css: 'input[name="email"]', byRole: 'textbox[name="Email"]' },
+    },
+    {
+      type: "input",
+      label: "Password",
+      locators: { css: 'input[name="password"]', byRole: 'textbox[name="Password"]' },
+    },
+    {
+      type: "button",
+      text: "Sign in",
+      locators: { byText: "Sign in", css: "button[type=submit]" },
+    },
+    {
+      type: "link",
+      text: "Forgot password",
+      locators: { byText: "Forgot password?", css: "a[href*='forgot']" },
+    },
+  ]);
+
+  const actionMapper = new ActionMapper(llm, store);
+  const runner = new RunnerService(store, actionMapper);
+  const testCaseIds = store.listTestCases().map((tc) => tc.id);
+  const driver = new ConsolePageDriver();
+
+  console.log("Running simulated suite against demo UI map...");
+  const run = await runner.runSuite({
+    suiteName: "demo",
+    baseUrl: "http://localhost:3000",
+    testCaseIds,
+    driver,
+    uiPagesByPath: {
+      "/login": { pageId: loginMap.page.id, elements: loginMap.elements },
+    },
+  });
+
+  console.log(`Run ${run.id} finished with status: ${run.status}`);
+}
+
+async function main() {
+  const command = process.argv[2] ?? "demo";
+  if (command === "demo") {
+    await runDemo();
+  } else if (command === "run-simulated") {
+    await runSimulated();
+  } else {
+    console.log(`Unknown command "${command}". Use "demo" or "run-simulated".`);
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

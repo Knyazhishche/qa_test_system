@@ -1,0 +1,22 @@
+{
+  "name": "qa_test_system",
+  "version": "1.0.0",
+  "description": "AI-powered QA regression system prototype using Grok via OpenRouter.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "demo": "ts-node src/index.ts demo",
+    "run-simulated": "ts-node src/index.ts run-simulated"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
