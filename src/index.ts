@@ -6,6 +6,7 @@ import { UiMapBuilder } from "./services/uiMapBuilder";
 import { ActionMapper } from "./services/actionMapper";
 import { ConsolePageDriver, RunnerService } from "./services/runner";
 import { embedText } from "./services/embedding";
+import { NotionClient } from "./services/notionClient";
 
 async function runDemo() {
   const store = new InMemoryStore();
@@ -90,14 +91,40 @@ async function runSimulated() {
   console.log(`Run ${run.id} finished with status: ${run.status}`);
 }
 
+async function runNotionIngestion(pageId: string, featureKey = "notion/feature"): Promise<void> {
+  const store = new InMemoryStore();
+  const ingestion = new IngestionService(store);
+  const notion = new NotionClient();
+  console.log(`Ingesting Notion page ${pageId} ...`);
+  const { chunks, source } = await ingestion.ingestNotionPage(notion, pageId);
+  console.log(`Stored ${chunks.length} chunks from Notion source "${source.name}".`);
+
+  const llm = new OpenRouterClient();
+  const generator = new TestCaseGenerator(llm, store);
+  for (const chunk of chunks) {
+    await generator.generateFromChunk(chunk, featureKey);
+  }
+  const cases = store.listTestCases();
+  console.log(`Generated ${cases.length} test cases for feature "${featureKey}".`);
+  cases.forEach((tc) => console.log(`- ${tc.title} [${tc.priority}]`));
+}
+
 async function main() {
   const command = process.argv[2] ?? "demo";
   if (command === "demo") {
     await runDemo();
   } else if (command === "run-simulated") {
     await runSimulated();
+  } else if (command === "ingest-notion") {
+    const pageId = process.argv[3];
+    const featureKey = process.argv[4] ?? "notion/feature";
+    if (!pageId) {
+      console.log('Usage: npm run notion-ingest -- <notion_page_id> [featureKey]');
+      return;
+    }
+    await runNotionIngestion(pageId, featureKey);
   } else {
-    console.log(`Unknown command "${command}". Use "demo" or "run-simulated".`);
+    console.log(`Unknown command "${command}". Use "demo", "run-simulated", or "ingest-notion".`);
   }
 }
 

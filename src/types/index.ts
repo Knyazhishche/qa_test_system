@@ -1,4 +1,4 @@
-export type DocSourceType = "confluence" | "markdown" | "openapi" | "other";
+export type DocSourceType = "confluence" | "markdown" | "openapi" | "notion" | "other";
 
 export interface DocumentSource {
   id: string;

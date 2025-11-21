@@ -3,6 +3,7 @@ import { InMemoryStore } from "../storage/inMemoryStore";
 import { embedText } from "./embedding";
 import { chunkMarkdown } from "./chunker";
 import { DocumentChunk, DocumentSource } from "../types";
+import { NotionClient } from "./notionClient";
 
 export interface IngestionResult {
   source: DocumentSource;
@@ -28,5 +29,15 @@ export class IngestionService {
       embedding: embedText(section.content),
     }));
     return this.store.addDocumentChunks(source.id, chunks);
+  }
+
+  async ingestNotionPage(notion: NotionClient, pageId: string): Promise<IngestionResult> {
+    const title = await notion.getPageTitle(pageId);
+    const markdown = await notion.getPageMarkdown(pageId);
+    const cleanTitle = title.trim() || "Notion Page";
+    const url = `https://www.notion.so/${pageId.replace(/-/g, "")}`;
+    const source = this.store.createDocumentSource({ type: "notion", name: cleanTitle, url });
+    const chunks = this.ingestMarkdownContent(markdown, source);
+    return { source, chunks };
   }
 }

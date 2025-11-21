@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "demo": "ts-node src/index.ts demo",
-    "run-simulated": "ts-node src/index.ts run-simulated"
+    "run-simulated": "ts-node src/index.ts run-simulated",
+    "notion-ingest": "ts-node src/index.ts ingest-notion"
   },
   "keywords": [],
   "author": "",
